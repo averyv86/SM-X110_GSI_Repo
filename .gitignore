@@ -1,0 +1,15 @@
+# Android build outputs
+out/
+.tmp/
+.cache/
+*.log
+
+# Local unpacked images and temp files
+*.raw
+*.new.dat
+*.transfer.list
+
+# Optional: uncomment if you do NOT want binaries committed
+# *.img
+# *.tar
+# *.zip
