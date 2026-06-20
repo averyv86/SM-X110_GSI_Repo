@@ -1,0 +1,52 @@
+name: Kitchen Build GSI
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_type:
+        description: 'Choose ROM to build'
+        required: true
+        default: 'PixelOS'
+        type: choice
+        options:
+          - PixelOS
+          - crDroid
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Build Environment
+        run: |
+          sudo apt update
+          sudo apt install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git git-lfs gnupg gperf imagemagick lib32ncurses-dev lib32readline-dev lib32z1-dev libelf-dev liblz4-tool libncurses-dev libssl-dev libxml2 libxml2-utils lzop openjdk-11-jdk pngcrush protobuf-compiler python3 repo unzip
+
+      - name: Build GSI
+        run: |
+          mkdir workspace && cd workspace
+          git config --global user.email "action@github.com"
+          git config --global user.name "GitHub Action"
+          
+          if [ "${{ github.event.inputs.rom_type }}" == "PixelOS" ]; then
+            repo init -u https://github.com/PixelOS-AOSP/android_manifest.git -b fourteen --git-lfs
+          else
+            repo init -u https://github.com/crdroidandroid/android.git -b 14.0 --git-lfs
+          fi
+          
+          git clone https://github.com/naz664/treble_manifest.git .repo/local_manifests -b 14
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags --optimized-fetch --prune
+          
+          cd device/phh/treble
+          bash generate.sh ${{ github.event.inputs.rom_type }}
+          
+          echo "Starting GSI Build..."
+          # mka systemimage
+
+      - name: Upload Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.rom_type }}-GSI
+          path: workspace/out/target/product/*/system.img
