@@ -29,6 +29,17 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            gcc \
+            liblzo2-dev \
+            xz-utils \
+            tar \
+            curl
+
       - name: Clone MIO Kitchen Framework Core
         run: |
           git clone https://github.com/ColdWindScholar/MIO-KITCHEN-SOURCE.git mio_kitchen
@@ -49,7 +60,7 @@ jobs:
           elif [ "${{ github.event.inputs.rom_type }}" == "PixelExtended" ]; then
             URL="https://downloads.sourceforge.net/project/thegsis/PixelExtended/PixelExtended_treble_arm64_bN.img.xz"
           fi
-          
+
           curl -L -o target_gsi.img.xz "$URL"
           xz -d target_gsi.img.xz
           mv target_gsi.img mio_kitchen/workspace/system.img
@@ -59,12 +70,12 @@ jobs:
           cd mio_kitchen
           echo "=== Unpacking System Image via MIO Core ==="
           python3 tool.py --unpack workspace/system.img
-          
+
           echo "=== Injecting Custom Tablet Props for SM-X110 ==="
           sudo sh -c 'echo "ro.product.model=SM-X110" >> workspace/unpacked/system/build.prop'
           sudo sh -c 'echo "ro.product.device=gta9wifi" >> workspace/unpacked/system/build.prop'
           sudo sh -c 'echo "ro.android.boot.selinux=permissive" >> workspace/unpacked/system/build.prop'
-          
+
           echo "=== Re-sealing System Image via MIO Framework ==="
           python3 tool.py --pack workspace/unpacked/system
 
