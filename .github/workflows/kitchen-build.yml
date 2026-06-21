@@ -18,7 +18,11 @@ jobs:
   mio-kitchen-build:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+
+    defaults:
+      run:
+        shell: bash
 
     steps:
       - name: Checkout Code Configurations
@@ -29,54 +33,114 @@ jobs:
         with:
           python-version: '3.10'
 
+      - name: Install system dependencies
+        run: |
+          set -euxo pipefail
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xz-utils
+
       - name: Clone MIO Kitchen Framework Core
         run: |
-          git clone https://github.com/ColdWindScholar/MIO-KITCHEN-SOURCE.git mio_kitchen
+          set -euxo pipefail
+          git clone --depth 1 https://github.com/ColdWindScholar/MIO-KITCHEN-SOURCE.git mio_kitchen
           cd mio_kitchen
-          python3 -m pip install -U pip
+          python3 -m pip install -U --force-reinstall pip
           pip install -r requirements.txt
           python3 config.py upbin
 
       - name: Fetch Selected Pre-Built GSI Base
         run: |
+          set -euxo pipefail
           echo "=== Downloading GSI Architecture Target ==="
-          if [ "${{ github.event.inputs.rom_type }}" == "PixelOS" ]; then
-            URL="https://downloads.sourceforge.net/project/thegsis/PixelOS/PixelOS_treble_arm64_bN.img.xz"
-          elif [ "${{ github.event.inputs.rom_type }}" == "crDroid" ]; then
-            URL="https://downloads.sourceforge.net/project/thegsis/crDroid/crDroid_treble_arm64_bN.img.xz"
-          elif [ "${{ github.event.inputs.rom_type }}" == "EvolutionX" ]; then
-            URL="https://downloads.sourceforge.net/project/thegsis/Evolution-X/EvolutionX_treble_arm64_bN.img.xz"
-          elif [ "${{ github.event.inputs.rom_type }}" == "PixelExtended" ]; then
-            URL="https://downloads.sourceforge.net/project/thegsis/PixelExtended/PixelExtended_treble_arm64_bN.img.xz"
-          fi
 
-          curl -L -o target_gsi.img.xz "$URL"
+          case "${{ github.event.inputs.rom_type }}" in
+            PixelOS)
+              URL="https://downloads.sourceforge.net/project/thegsis/PixelOS/PixelOS_treble_arm64_bN.img.xz"
+              ;;
+            crDroid)
+              URL="https://downloads.sourceforge.net/project/thegsis/crDroid/crDroid_treble_arm64_bN.img.xz"
+              ;;
+            EvolutionX)
+              URL="https://downloads.sourceforge.net/project/thegsis/Evolution-X/EvolutionX_treble_arm64_bN.img.xz"
+              ;;
+            PixelExtended)
+              URL="https://downloads.sourceforge.net/project/thegsis/PixelExtended/PixelExtended_treble_arm64_bN.img.xz"
+              ;;
+            *)
+              echo "Unsupported rom_type: ${{ github.event.inputs.rom_type }}"
+              exit 1
+              ;;
+          esac
+
+          curl -fL --retry 3 --retry-delay 5 -o target_gsi.img.xz "$URL"
+          test -s target_gsi.img.xz
+          ls -lh target_gsi.img.xz
+
           xz -d target_gsi.img.xz
-          mv target_gsi.img mio_kitchen/workspace/system.img
+          test -f target_gsi.img
+          ls -lh target_gsi.img
+
+          mkdir -p mio_kitchen/workspace
+          mv -f target_gsi.img mio_kitchen/workspace/system.img
+          test -f mio_kitchen/workspace/system.img
+          ls -lh mio_kitchen/workspace/system.img
 
       - name: Execute MIO Kitchen Patching Logic
         run: |
+          set -euxo pipefail
           cd mio_kitchen
+
           echo "=== Unpacking System Image via MIO Core ==="
           python3 tool.py --unpack workspace/system.img
 
+          echo "=== Inspecting unpack output ==="
+          find workspace -maxdepth 5 \( -type f -o -type d \) | sort | head -300 || true
+
+          BUILD_PROP="workspace/unpacked/system/build.prop"
+          if [ ! -f "$BUILD_PROP" ]; then
+            echo "Expected build.prop not found at $BUILD_PROP"
+            echo "Searching for build.prop candidates..."
+            find workspace -type f -name build.prop | sort || true
+            exit 1
+          fi
+
           echo "=== Injecting Custom Tablet Props for SM-X110 ==="
-          sudo sh -c 'echo "ro.product.model=SM-X110" >> workspace/unpacked/system/build.prop'
-          sudo sh -c 'echo "ro.product.device=gta9wifi" >> workspace/unpacked/system/build.prop'
-          sudo sh -c 'echo "ro.android.boot.selinux=permissive" >> workspace/unpacked/system/build.prop'
+          {
+            echo "ro.product.model=SM-X110"
+            echo "ro.product.device=gta9wifi"
+            echo "ro.android.boot.selinux=permissive"
+          } | sudo tee -a "$BUILD_PROP" > /dev/null
+
+          echo "=== Tail of modified build.prop ==="
+          tail -n 10 "$BUILD_PROP"
 
           echo "=== Re-sealing System Image via MIO Framework ==="
           python3 tool.py --pack workspace/unpacked/system
 
+          echo "=== Inspecting repack output ==="
+          find workspace -maxdepth 5 \( -type f -o -type d \) | sort | head -300 || true
+
+          if [ ! -f workspace/system.img ]; then
+            echo "Expected repacked image not found at workspace/system.img"
+            find workspace -type f | sort || true
+            exit 1
+          fi
+
+          ls -lh workspace/system.img
+
       - name: Prepare Odin AP Package Archive
         run: |
+          set -euxo pipefail
           cd mio_kitchen/workspace/
-          mv system.img ../../system.img
+          test -f system.img
+          mv -f system.img ../../system.img
           cd ../../
           tar -cvf AP_${{ github.event.inputs.rom_type }}_SMX110_MIO.tar system.img
+          ls -lh AP_${{ github.event.inputs.rom_type }}_SMX110_MIO.tar
 
       - name: Upload Finished Artifact to GitHub Actions
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.rom_type }}-MIO-Odin-Build
           path: AP_*.tar
+          if-no-files-found: error
