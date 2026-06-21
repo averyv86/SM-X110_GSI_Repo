@@ -37,7 +37,7 @@ jobs:
         run: |
           set -euxo pipefail
           sudo apt-get update
-          sudo apt-get install -y python3-tk xz-utils
+          sudo apt-get install -y python3-tk xz-utils build-essential liblzo2-dev
 
       - name: Clone MIO Kitchen Framework Core
         run: |
