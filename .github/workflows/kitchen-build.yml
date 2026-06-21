@@ -51,7 +51,7 @@ jobs:
           elif [ -f config ]; then
             python3 ./config upbin
           else
-            echo "Unable to find a MIO Kitchen binary update entrypoint"
+            echo "Unable to find a MIO Kitchen binary update entrypoint (checked: config.py, config)"
             exit 1
           fi
 
