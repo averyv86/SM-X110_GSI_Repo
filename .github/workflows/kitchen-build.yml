@@ -46,7 +46,7 @@ jobs:
           cd mio_kitchen
           python3 -m pip install -U --force-reinstall pip
           pip install -r requirements.txt
-          python3 config.py upbin
+          python3 config upbin
 
       - name: Fetch Selected Pre-Built GSI Base
         run: |
