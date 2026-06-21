@@ -79,4 +79,85 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ github.event.inputs.rom_type }}-MIO-Odin-Build
+          path: AP_*.tarname: Cloud MIO Kitchen Modifier
+
+on:
+  workflow_dispatch:
+    inputs:
+      rom_type:
+        description: 'Select GSI Base to Modify'
+        required: true
+        default: 'PixelOS'
+        type: choice
+        options:
+          - PixelOS
+          - crDroid
+          - EvolutionX
+          - PixelExtended
+
+jobs:
+  mio-kitchen-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Code Configurations
+        uses: actions/checkout@v4
+
+      - name: Setup Python Environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Clone MIO Kitchen Framework Core
+        run: |
+          git clone https://github.com/ColdWindScholar/MIO-KITCHEN-SOURCE.git mio_kitchen
+          cd mio_kitchen
+          python3 -m pip install -U pip
+          pip install -r requirements.txt
+          python3 config.py upbin
+
+      - name: Fetch Selected Pre-Built GSI Base
+        run: |
+          echo "=== Downloading GSI Architecture Target ==="
+          if [ "${{ github.event.inputs.rom_type }}" == "PixelOS" ]; then
+            URL="https://downloads.sourceforge.net/project/thegsis/PixelOS/PixelOS_treble_arm64_bN.img.xz"
+          elif [ "${{ github.event.inputs.rom_type }}" == "crDroid" ]; then
+            URL="https://downloads.sourceforge.net/project/thegsis/crDroid/crDroid_treble_arm64_bN.img.xz"
+          elif [ "${{ github.event.inputs.rom_type }}" == "EvolutionX" ]; then
+            URL="https://downloads.sourceforge.net/project/thegsis/Evolution-X/EvolutionX_treble_arm64_bN.img.xz"
+          elif [ "${{ github.event.inputs.rom_type }}" == "PixelExtended" ]; then
+            URL="https://downloads.sourceforge.net/project/thegsis/PixelExtended/PixelExtended_treble_arm64_bN.img.xz"
+          fi
+          
+          curl -L -o target_gsi.img.xz "$URL"
+          xz -d target_gsi.img.xz
+          mv target_gsi.img mio_kitchen/workspace/system.img
+
+      - name: Execute MIO Kitchen Patching Logic
+        run: |
+          cd mio_kitchen
+          echo "=== Unpacking System Image via MIO Core ==="
+          python3 tool.py --unpack workspace/system.img
+          
+          echo "=== Injecting Custom Tablet Props for SM-X110 ==="
+          sudo sh -c 'echo "ro.product.model=SM-X110" >> workspace/unpacked/system/build.prop'
+          sudo sh -c 'echo "ro.product.device=gta9wifi" >> workspace/unpacked/system/build.prop'
+          sudo sh -c 'echo "ro.android.boot.selinux=permissive" >> workspace/unpacked/system/build.prop'
+          
+          echo "=== Re-sealing System Image via MIO Framework ==="
+          python3 tool.py --pack workspace/unpacked/system
+
+      - name: Prepare Odin AP Package Archive
+        run: |
+          cd mio_kitchen/workspace/
+          mv system.img ../../system.img
+          cd ../../
+          tar -cvf AP_${{ github.event.inputs.rom_type }}_SMX110_MIO.tar system.img
+
+      - name: Upload Finished Artifact to GitHub Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ github.event.inputs.rom_type }}-MIO-Odin-Build
           path: AP_*.tar
