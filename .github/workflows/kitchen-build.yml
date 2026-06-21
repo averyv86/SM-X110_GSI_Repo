@@ -46,7 +46,14 @@ jobs:
           cd mio_kitchen
           python3 -m pip install -U --force-reinstall pip
           pip install -r requirements.txt
-          python3 config.py upbin
+          if [ -f config.py ]; then
+            python3 config.py upbin
+          elif [ -f config ]; then
+            python3 config upbin
+          else
+            echo "Unable to find a MIO Kitchen binary update entrypoint"
+            exit 1
+          fi
 
       - name: Fetch Selected Pre-Built GSI Base
         run: |
